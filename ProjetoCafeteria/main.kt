@@ -1,8 +1,10 @@
 // Café & Companhia
-// Integrantes: Joice e Kelly
+// Integrantes: Joice Esperafico Sipp e Kelly Larissa Thomas
 
 import java.util.Scanner
-val scanner = Scanner(System.`in`, "windows-1252")
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+val scanner = Scanner(System.`in`, "UTF-8")
 
 enum class CategoriaProduto(val descricao: String) {
     BEBIDA("Bebida"),
@@ -29,13 +31,25 @@ class Bebida(
     nome: String,
     preco: Double,
     estoque: Int
-) : Produto(nome, preco, estoque, CategoriaProduto.BEBIDA)
+) : Produto(nome, preco, estoque, CategoriaProduto.BEBIDA) {
+
+    override fun exibirInformacoes() {
+        super.exibirInformacoes()
+        println("Tipo especifico: Bebida")
+    }
+}
 
 class Comida(
     nome: String,
     preco: Double,
     estoque: Int
-) : Produto(nome, preco, estoque, CategoriaProduto.COMIDA)
+) : Produto(nome, preco, estoque, CategoriaProduto.COMIDA) {
+
+    override fun exibirInformacoes() {
+        super.exibirInformacoes()
+        println("Tipo especifico: Comida")
+    }
+}
 
 data class ItemPedido(
     val produto: Produto,
@@ -46,8 +60,48 @@ data class ItemPedido(
     }
 }
 
+
+data class ItemVenda(
+    val nomeProduto: String,
+    val precoUnitario: Double,
+    val quantidade: Int
+) {
+    fun calcularSubtotal(): Double {
+        return precoUnitario * quantidade
+    }
+}
+
+
+
+data class Venda(
+    val itens: List<ItemVenda>,
+    val total: Double,
+    val data: LocalDateTime = LocalDateTime.now()
+) {
+    fun exibirResumo() {
+        val formato = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+
+        println("Data: ${data.format(formato)}")
+        println("Itens vendidos:")
+
+        for (item in itens) {
+            println(
+                "${item.nomeProduto} - " +
+                "${item.quantidade} unidade(s) - " +
+                "Subtotal: R$ ${item.calcularSubtotal()}"
+            )
+        }
+
+        println("Total da venda: R$ $total")
+    }
+}
+
+
 class Pedido {
     val itens = mutableListOf<ItemPedido>()
+    fun copiarItem(item: ItemPedido): ItemPedido {
+        return item.copy()
+    }
     fun adicionarItem(produto: Produto, quantidade: Int) {
         val itemExistente = itens.find { it.produto.nome == produto.nome }
         if (itemExistente != null) {
@@ -55,6 +109,9 @@ class Pedido {
         } else {
             itens.add(ItemPedido(produto, quantidade))
         }
+    }
+    fun adicionarItem(produto: Produto) {
+        adicionarItem(produto, 1)
     }
 
     fun calcularTotal(): Double {
@@ -85,6 +142,7 @@ class Pedido {
 object Cafeteria {
     val produtos = mutableListOf<Produto>()
     val estoquePorProduto = HashMap<String, Int>()
+    val vendas = mutableListOf<Venda>()
 }
 
 fun cadastrarProduto() {
@@ -112,8 +170,10 @@ fun cadastrarProduto() {
         return
     }
     println("Categoria:")
-    println("1 - Bebida")
-    println("2 - Comida")
+
+    for ((indice, categoria) in CategoriaProduto.values().withIndex()) {
+        println("${indice + 1} - ${categoria.descricao}")
+    }
     print("Escolha: ")
     val escolha = scanner.nextLine()?.toIntOrNull() ?: 0
     val produto = if (escolha == 1) {
@@ -138,7 +198,14 @@ fun listarProdutos() {
     for ((indice, produto) in Cafeteria.produtos.withIndex()) {
         println("${indice + 1}. $produto")
     }
+    println("\n=== INFORMACOES DETALHADAS ===")
+
+    for (produto in Cafeteria.produtos) {
+        produto.exibirInformacoes()
+        println("--------------------")
+    }
 }
+
 
 fun consultarEstoque() {
     println("\n=== CONSULTA DE ESTOQUE ===")
@@ -228,10 +295,25 @@ fun finalizarVenda(pedido: Pedido): Boolean {
         Cafeteria.estoquePorProduto[item.produto.nome] =
             item.produto.estoque
     }
+    
+    val venda = Venda(
+        itens = pedido.itens.map {
+            ItemVenda(
+                nomeProduto = it.produto.nome,
+                precoUnitario = it.produto.preco,
+                quantidade = it.quantidade
+            )
+        },
+        total = pedido.calcularTotal()
+    )
+
+
+    Cafeteria.vendas.add(venda)
+
     println("\nVenda realizada com sucesso!")
-    println("Total recebido: R$ ${pedido.calcularTotal()}")
+    println("Total recebido: R$ ${venda.total}")
     return true
-}
+    }
 
 fun realizarPedido() {
     val pedido = montarPedido() ?: return
@@ -246,6 +328,11 @@ fun main() {
         println("2 - Listar produtos")
         println("3 - Consultar estoque")
         println("4 - Realizar pedido")
+        println("5 - Consultar produtos por categoria")
+        println("6 - Ordenar produtos por preco")
+        println("7 - Pesquisar produtos")
+        println("8 - Consultar historico de vendas")
+        println("9 - Consultar faturamento")
         println("0 - Sair")
         print("Escolha uma opcao: ")
         opcao = scanner.nextLine()?.toIntOrNull() ?: -1
@@ -254,8 +341,200 @@ fun main() {
             2 -> listarProdutos()
             3 -> consultarEstoque()
             4 -> realizarPedido()
+            5 -> consultarProdutosPorCategoria()
+            6 -> ordenarProdutosPorPreco()
+            7 -> pesquisarProdutos()
+            8 -> consultarHistoricoVendas()
+            9 -> consultarFaturamento()
             0 -> println("Encerrando o sistema...")
             else -> println("Opcao invalida!")
         }
     } while (opcao != 0)
+}
+
+fun filtrarProdutos(filtro: (Produto) -> Boolean): List<Produto> {
+    return Cafeteria.produtos.filter(filtro)
+}
+
+fun consultarProdutosPorCategoria() {
+    println("\n=== CONSULTA POR CATEGORIA ===")
+    println("1 - Bebidas")
+    println("2 - Comidas")
+    print("Escolha uma categoria: ")
+
+    val escolha = scanner.nextLine().toIntOrNull() ?: 0
+
+    val categoriaEscolhida = if (escolha == 1) {
+        CategoriaProduto.BEBIDA
+    } else if (escolha == 2) {
+        CategoriaProduto.COMIDA
+    } else {
+        println("Categoria invalida!")
+        return
+    }
+
+    val resultado = filtrarProdutos { produto ->
+        produto.categoria == categoriaEscolhida
+    }
+
+    if (resultado.isEmpty()) {
+        println("Nenhum produto encontrado nessa categoria.")
+    } else {
+        println("\n=== PRODUTOS ENCONTRADOS ===")
+        for (produto in resultado) {
+            println(produto)
+        }
+    }
+}
+
+fun ordenarProdutosPorPreco() {
+    println("\n=== PRODUTOS POR PRECO ===")
+    println("1 - Menor para o maior preco")
+    println("2 - Maior para o menor preco")
+    print("Escolha uma opcao: ")
+
+    val escolha = scanner.nextLine().toIntOrNull() ?: 0
+
+    val produtosOrdenados = if (escolha == 1) {
+        Cafeteria.produtos.sortedBy { it.preco }
+    } else if (escolha == 2) {
+        Cafeteria.produtos.sortedByDescending { it.preco }
+    } else {
+        println("Opcao invalida!")
+        return
+    }
+
+    if (produtosOrdenados.isEmpty()) {
+        println("Nenhum produto cadastrado.")
+        return
+    }
+
+    println("\n=== LISTA ORDENADA ===")
+    for (produto in produtosOrdenados) {
+        println("$produto")
+    }
+}
+
+fun registrarProduto(
+    nome: String,
+    preco: Double,
+    estoque: Int = 0,
+    categoria: CategoriaProduto = CategoriaProduto.BEBIDA
+) {
+    if (nome.isBlank() || preco <= 0 || estoque < 0) {
+        println("Dados invalidos!")
+        return
+    }
+
+    if (Cafeteria.produtos.any {
+        it.nome.equals(nome, ignoreCase = true)
+    }) {
+        println("Ja existe um produto com esse nome!")
+        return
+    }
+
+    val produto = if (categoria == CategoriaProduto.BEBIDA) {
+        Bebida(nome, preco, estoque)
+    } else {
+        Comida(nome, preco, estoque)
+    }
+
+    Cafeteria.produtos.add(produto)
+    Cafeteria.estoquePorProduto[nome] = estoque
+
+    println("Produto registrado com sucesso!")
+}
+
+class ConsultorProdutos {
+
+    fun pesquisar(termo: String): List<Produto> {
+        return Cafeteria.produtos.filter {
+            it.nome.contains(termo, ignoreCase = true)
+        }
+    }
+
+    fun pesquisar(precoMaximo: Double): List<Produto> {
+        return Cafeteria.produtos.filter {
+            it.preco <= precoMaximo
+        }
+    }
+}
+
+fun pesquisarProdutos() {
+    val consultor = ConsultorProdutos()
+
+    println("\n=== PESQUISAR PRODUTOS ===")
+    println("1 - Pesquisar pelo nome")
+    println("2 - Pesquisar pelo preco")
+    print("Escolha uma opcao: ")
+
+    val escolha = scanner.nextLine().toIntOrNull() ?: 0
+
+    val resultado = if (escolha == 1) {
+        print("Digite o nome: ")
+        val nome = scanner.nextLine()
+        consultor.pesquisar(nome)
+
+    } else if (escolha == 2) {
+        print("Digite o preco maximo: ")
+        val preco = scanner.nextLine().trim().replace(",", ".").toDoubleOrNull()
+
+        if (preco == null || preco < 0) {
+            println("Preco invalido!")
+            return
+        }
+
+        consultor.pesquisar(preco)
+
+    } else {
+        println("Opcao invalida!")
+        return
+    }
+
+    if (resultado.isEmpty()) {
+        println("Nenhum produto encontrado.")
+    } else {
+        println("\n=== RESULTADO DA PESQUISA ===")
+        for (produto in resultado) {
+            println(produto)
+        }
+    }
+}
+
+fun consultarHistoricoVendas() {
+    println("\n=== HISTORICO DE VENDAS ===")
+
+    if (Cafeteria.vendas.isEmpty()) {
+        println("Nenhuma venda realizada.")
+        return
+    }
+
+    for ((indice, venda) in Cafeteria.vendas.withIndex()) {
+        println("\nVenda ${indice + 1}")
+        println("--------------------")
+        venda.exibirResumo()
+    }
+}
+
+fun consultarFaturamento() {
+    println("\n=== RELATORIO DE FATURAMENTO ===")
+
+    val quantidadeVendas = Cafeteria.vendas.size
+
+    if (quantidadeVendas == 0) {
+        println("Nenhuma venda realizada.")
+        return
+    }
+
+    var faturamentoTotal = 0.0
+
+    for (venda in Cafeteria.vendas) {
+        faturamentoTotal += venda.total
+    }
+
+    val ticketMedio = faturamentoTotal / quantidadeVendas
+
+    println("Quantidade de vendas: $quantidadeVendas")
+    println("Faturamento total: R$ $faturamentoTotal")
+    println("Ticket medio: R$ $ticketMedio")
 }
